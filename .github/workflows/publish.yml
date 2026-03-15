@@ -1,0 +1,38 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Validate tag matches package version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version)")
+          EXPECTED_TAG="v$VERSION"
+
+          if [ "$TAG_NAME" != "$EXPECTED_TAG" ]; then
+            echo "Tag/package version mismatch: got $TAG_NAME, expected $EXPECTED_TAG"
+            exit 1
+          fi
+
+      - name: Validate package contents
+        run: |
+          npm pack --dry-run --json | node -e 'const input = require("node:fs").readFileSync(0, "utf8"); const data = JSON.parse(input || "[]"); const files = (data[0]?.files ?? []).map((file) => file.path); const allowed = new Set(["CHANGELOG.md", "LICENSE", "README.md", "package.json"]); const bad = files.filter((file) => !allowed.has(file) && !file.startsWith("dist/")); if (bad.length > 0) { console.error("Unexpected packed files:\n" + bad.join("\n")); process.exit(1); } console.log("Pack file allowlist check passed");'
+
+      - run: npm publish --provenance --access public
