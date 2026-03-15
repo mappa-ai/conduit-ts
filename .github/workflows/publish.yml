@@ -35,4 +35,4 @@ jobs:
         run: |
           npm pack --dry-run --json | node -e 'const input = require("node:fs").readFileSync(0, "utf8"); const data = JSON.parse(input || "[]"); const files = (data[0]?.files ?? []).map((file) => file.path); const allowed = new Set(["CHANGELOG.md", "LICENSE", "README.md", "package.json"]); const bad = files.filter((file) => !allowed.has(file) && !file.startsWith("dist/")); if (bad.length > 0) { console.error("Unexpected packed files:\n" + bad.join("\n")); process.exit(1); } console.log("Pack file allowlist check passed");'
 
-      - run: npm publish --provenance --access public
+      - run: npx npm@latest publish --provenance --access public
