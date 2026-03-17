@@ -4785,7 +4785,7 @@ var FilesResource = class {
 	constructor(transport, opts) {
 		this.transport = transport;
 		this.fetchImpl = opts?.fetchImpl ?? fetch;
-		this.timeoutMs = opts?.timeoutMs ?? 3e4;
+		this.timeoutMs = opts?.timeoutMs ?? 3e5;
 		this.maxSourceBytes = opts?.maxSourceBytes ?? DEFAULT_MAX_SOURCE_BYTES;
 	}
 	async upload(req) {
@@ -5221,11 +5221,13 @@ const targetSelector$1 = object({
 	entity_id: string().min(1).max(256).trim().nullish(),
 	hint: string().min(1).max(1024).trim().nullish(),
 	on_miss: _enum(["fallback_dominant", "error"]).default("error"),
+	speaker_index: number$1().int().min(0).nullish(),
 	strategy: _enum([
 		"dominant",
 		"timerange",
 		"entity_id",
-		"magic_hint"
+		"magic_hint",
+		"speaker_index"
 	]),
 	timerange: object({
 		end_seconds: number$1().min(0).nullish(),
@@ -5234,8 +5236,9 @@ const targetSelector$1 = object({
 }).refine((data) => {
 	if (data.strategy === "entity_id" && !data.entity_id) return false;
 	if (data.strategy === "magic_hint" && (!data.hint || data.hint.trim() === "")) return false;
+	if (data.strategy === "speaker_index" && typeof data.speaker_index !== "number") return false;
 	return true;
-}, { message: "entity_id is required for entity_id strategy, hint is required for magic_hint strategy" });
+}, { message: "entity_id is required for entity_id strategy, hint is required for magic_hint strategy, speaker_index is required for speaker_index strategy" });
 /**
 * Available report templates.
 * All templates analyze the same behavioral map (LayeredLenses) but apply
@@ -5470,7 +5473,7 @@ const toggleSharingBody$1 = object({
 const sharingQuery$1 = object({ workspaceId: string() });
 
 //#endregion
-//#region ../contracts/dist/matching-analysis-BU0fQbjl.mjs
+//#region ../contracts/dist/matching-analysis-CpgnrP6p.mjs
 const targetSelector = targetSelector$1;
 const matchingContext = literal("hiring_team_fit");
 const subjectRef = discriminatedUnion("type", [object({
@@ -5690,6 +5693,11 @@ var MatchingAnalysisResource = class {
 			...target.onMiss ? { on_miss: target.onMiss } : {},
 			entity_id: target.entityId
 		};
+		if (target.strategy === "speaker_index") return {
+			strategy: target.strategy,
+			...target.onMiss ? { on_miss: target.onMiss } : {},
+			speaker_index: target.speakerIndex
+		};
 		return {
 			strategy: target.strategy,
 			...target.onMiss ? { on_miss: target.onMiss } : {},
@@ -5763,6 +5771,11 @@ function toTargetSelector(selector) {
 		onMiss: selector.on_miss,
 		strategy: "entity_id"
 	};
+	if (selector.strategy === "speaker_index") return {
+		onMiss: selector.on_miss,
+		speakerIndex: selector.speaker_index ?? 0,
+		strategy: "speaker_index"
+	};
 	return {
 		hint: selector.hint ?? "",
 		onMiss: selector.on_miss,
@@ -5771,15 +5784,19 @@ function toTargetSelector(selector) {
 }
 function validateTarget$1(target) {
 	if (target.strategy === "timerange") {
-		if (!target.timeRange) throw new ConduitError("target.timeRange is required for timerange", { code: "invalid_request" });
-		const start = target.timeRange.startSeconds;
-		const end = target.timeRange.endSeconds;
-		if (start === void 0 && end === void 0) throw new ConduitError("target.timeRange must include startSeconds or endSeconds", { code: "invalid_request" });
-		if (start !== void 0 && end !== void 0 && !(start < end)) throw new ConduitError("target.timeRange.startSeconds must be less than endSeconds", { code: "invalid_request" });
+		validateTimerangeTarget$1(target.timeRange);
 		return;
 	}
 	if (target.strategy === "entity_id" && !target.entityId.trim()) throw new ConduitError("target.entityId is required for entity_id", { code: "invalid_request" });
+	if (target.strategy === "speaker_index" && (!Number.isInteger(target.speakerIndex) || target.speakerIndex < 0)) throw new ConduitError("target.speakerIndex is required for speaker_index", { code: "invalid_request" });
 	if (target.strategy === "magic_hint" && !target.hint.trim()) throw new ConduitError("target.hint is required for magic_hint", { code: "invalid_request" });
+}
+function validateTimerangeTarget$1(timeRange) {
+	if (!timeRange) throw new ConduitError("target.timeRange is required for timerange", { code: "invalid_request" });
+	const start = timeRange.startSeconds;
+	const end = timeRange.endSeconds;
+	if (start === void 0 && end === void 0) throw new ConduitError("target.timeRange must include startSeconds or endSeconds", { code: "invalid_request" });
+	if (start !== void 0 && end !== void 0 && !(start < end)) throw new ConduitError("target.timeRange.startSeconds must be less than endSeconds", { code: "invalid_request" });
 }
 function toJobStage$1(stage) {
 	if (!stage) return;
@@ -5925,6 +5942,11 @@ function normalizeTarget(target) {
 		...target.onMiss ? { on_miss: target.onMiss } : {},
 		entity_id: target.entityId
 	};
+	if (target.strategy === "speaker_index") return {
+		strategy: target.strategy,
+		...target.onMiss ? { on_miss: target.onMiss } : {},
+		speaker_index: target.speakerIndex
+	};
 	return {
 		strategy: target.strategy,
 		...target.onMiss ? { on_miss: target.onMiss } : {},
@@ -5933,15 +5955,19 @@ function normalizeTarget(target) {
 }
 function validateTarget(target) {
 	if (target.strategy === "timerange") {
-		if (!target.timeRange) throw new ConduitError("target.timeRange is required for timerange", { code: "invalid_request" });
-		const start = target.timeRange.startSeconds;
-		const end = target.timeRange.endSeconds;
-		if (start === void 0 && end === void 0) throw new ConduitError("target.timeRange must include startSeconds or endSeconds", { code: "invalid_request" });
-		if (start !== void 0 && end !== void 0 && !(start < end)) throw new ConduitError("target.timeRange.startSeconds must be less than endSeconds", { code: "invalid_request" });
+		validateTimerangeTarget(target.timeRange);
 		return;
 	}
 	if (target.strategy === "entity_id" && !target.entityId.trim()) throw new ConduitError("target.entityId is required for entity_id", { code: "invalid_request" });
+	if (target.strategy === "speaker_index" && (!Number.isInteger(target.speakerIndex) || target.speakerIndex < 0)) throw new ConduitError("target.speakerIndex is required for speaker_index", { code: "invalid_request" });
 	if (target.strategy === "magic_hint" && !target.hint.trim()) throw new ConduitError("target.hint is required for magic_hint", { code: "invalid_request" });
+}
+function validateTimerangeTarget(timeRange) {
+	if (!timeRange) throw new ConduitError("target.timeRange is required for timerange", { code: "invalid_request" });
+	const start = timeRange.startSeconds;
+	const end = timeRange.endSeconds;
+	if (start === void 0 && end === void 0) throw new ConduitError("target.timeRange must include startSeconds or endSeconds", { code: "invalid_request" });
+	if (start !== void 0 && end !== void 0 && !(start < end)) throw new ConduitError("target.timeRange.startSeconds must be less than endSeconds", { code: "invalid_request" });
 }
 function toJobStage(stage) {
 	if (!stage) return;
@@ -6569,7 +6595,7 @@ var Conduit = class {
 		if (isBrowserRuntime() && !options.dangerouslyAllowBrowser) throw new InitializationError("Conduit SDK cannot run in browser environments by default because API keys are secret. Use a server/edge proxy or pass dangerouslyAllowBrowser: true only if you understand the risk.", { code: "unsupported_runtime" });
 		const baseUrl = options.baseUrl ?? "https://api.mappa.ai";
 		if (!isValidUrl(baseUrl)) throw new InitializationError("baseUrl must be a valid URL", { code: "config_error" });
-		const timeoutMs = options.timeoutMs ?? 3e4;
+		const timeoutMs = options.timeoutMs ?? 3e5;
 		const maxRetries = options.maxRetries ?? 2;
 		const maxSourceBytes = options.maxSourceBytes ?? DEFAULT_MAX_SOURCE_BYTES;
 		const transport = new Transport({

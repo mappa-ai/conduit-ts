@@ -182,6 +182,10 @@ type TargetSelector = {
   onMiss?: "fallback_dominant" | "error";
   entityId: string;
 } | {
+  strategy: "speaker_index";
+  onMiss?: "fallback_dominant" | "error";
+  speakerIndex: number;
+} | {
   strategy: "magic_hint";
   onMiss?: "fallback_dominant" | "error";
   hint: string;
@@ -652,7 +656,7 @@ declare class WebhooksResource {
 //#region src/Conduit.d.ts
 type ConduitClientOptions = {
   /** API key used for Conduit authenticated requests. */apiKey: string; /** Base API URL. Defaults to https://api.mappa.ai. */
-  baseUrl?: string; /** Per-request timeout in milliseconds. Defaults to 30000. */
+  baseUrl?: string; /** Per-request timeout in milliseconds. Defaults to 300000. */
   timeoutMs?: number; /** Number of retry attempts for retryable requests. Defaults to 2. */
   maxRetries?: number; /** Headers included on every request. */
   defaultHeaders?: Record<string, string>; /** Custom fetch implementation. */

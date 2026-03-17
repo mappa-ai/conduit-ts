@@ -1,6 +1,6 @@
 {
 	"bugs": {
-		"url": "https://api-docs.mappa.ai"
+		"url": "https://docs.conduit.mappa.ai"
 	},
 	"description": "Official TypeScript/Node SDK for the Conduit API",
 	"exports": {
@@ -18,7 +18,7 @@
 	"files": [
 		"dist"
 	],
-	"homepage": "https://api-docs.mappa.ai",
+	"homepage": "https://docs.conduit.mappa.ai",
 	"keywords": [
 		"mappa",
 		"sdk",
@@ -37,7 +37,7 @@
 	"sideEffects": false,
 	"type": "module",
 	"types": "./dist/index.d.mts",
-	"version": "0.1.9",
+	"version": "0.1.14",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/mappa-ai/conduit-ts.git"

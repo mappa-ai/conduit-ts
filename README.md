@@ -202,4 +202,4 @@ console.log(matching?.id, matching?.output.markdown)
 | Edge/worker runtime | Yes | Yes | No - throws `UnsupportedRuntimeError` | Yes | Yes | Yes |
 | Browser | Blocked by default unless `dangerouslyAllowBrowser: true`; if enabled, `source.path` throws `UnsupportedRuntimeError` | Blocked by default unless `dangerouslyAllowBrowser: true` | No - throws `UnsupportedRuntimeError` | Yes | Yes | Yes |
 
-Questions? [api-docs.mappa.ai](https://api-docs.mappa.ai)
+Questions? [docs.conduit.mappa.ai](https://docs.conduit.mappa.ai)
