@@ -1,4 +1,4 @@
-import { _ as StreamError, a as ConduitError, b as ValidationError, c as InvalidSourceError, d as RateLimitError, f as RemoteFetchError, g as SourceError, h as RequestAbortedError, i as AuthError, l as JobCanceledError, m as RemoteFetchTooLargeError, o as InitializationError, p as RemoteFetchTimeoutError, r as ApiError, s as InsufficientCreditsError, t as Telemetry, u as JobFailedError, v as TimeoutError, x as WebhookVerificationError, y as UnsupportedRuntimeError } from "./transport-Bs9e6oSo.mjs";
+import { _ as StreamError, a as ConduitError, b as ValidationError, c as InvalidSourceError, d as RateLimitError, f as RemoteFetchError, g as SourceError, h as RequestAbortedError, i as AuthError, l as JobCanceledError, m as RemoteFetchTooLargeError, o as InitializationError, p as RemoteFetchTimeoutError, r as ApiError, s as InsufficientCreditsError, t as Telemetry, u as JobFailedError, v as TimeoutError, x as WebhookVerificationError, y as UnsupportedRuntimeError } from "./transport-ZaV_J-Ra.mjs";
 
 //#region ../../node_modules/.bun/zod@4.3.6/node_modules/zod/v4/core/json-schema.d.cts
 type _JSONSchema = boolean | JSONSchema;
@@ -1703,7 +1703,7 @@ interface ZodReadonly<T extends SomeType = $ZodType> extends _ZodType<$ZodReadon
 }
 declare const ZodReadonly: $constructor<ZodReadonly>;
 //#endregion
-//#region ../contracts/dist/v1/layered-lenses/model.d.mts
+//#region ../contracts/src/v1/layered-lenses/model.d.ts
 declare const LayeredLenses: ZodObject<{
   archetypal_story: ZodObject<{
     pmai: ZodObject<{
@@ -2532,6 +2532,36 @@ type BehaviorMapExport = {
   mapId: string;
   modelCheckpoint: string;
 };
+type BehaviorMapDirectUploadTarget = {
+  strategy: "dominant";
+} | {
+  strategy: "magic_hint";
+  hint: string;
+};
+type BehaviorMapDirectUploadRequest = {
+  file: Blob | ArrayBuffer | Uint8Array | ReadableStream<Uint8Array>;
+  label?: string;
+  target: BehaviorMapDirectUploadTarget;
+  requestId?: string;
+  signal?: AbortSignal;
+} | {
+  url: string;
+  label?: string;
+  target: BehaviorMapDirectUploadTarget;
+  requestId?: string;
+  signal?: AbortSignal;
+} | {
+  path: string;
+  label?: string;
+  target: BehaviorMapDirectUploadTarget;
+  requestId?: string;
+  signal?: AbortSignal;
+};
+type BehaviorMapDirectUploadResult = {
+  behaviorMap: LayeredLenses;
+  modelCheckpoint: string;
+  selectedSpeakerIndex: number;
+};
 type InternalConduitClientOptions = {
   /** Internal API key used for internal Conduit requests. */internalApiKey: string; /** Base API URL. Defaults to https://api.mappa.ai. */
   baseUrl?: string; /** Per-request timeout in milliseconds. Defaults to 300000. */
@@ -2556,11 +2586,12 @@ type InternalConduitBehaviorMaps = {
     requestId?: string;
     signal?: AbortSignal;
   }) => Promise<BehaviorMapExport>;
+  directUpload: (req: BehaviorMapDirectUploadRequest) => Promise<BehaviorMapDirectUploadResult>;
 };
 declare class InternalConduit {
   readonly behaviorMaps: InternalConduitBehaviorMaps;
   constructor(options: InternalConduitClientOptions);
 }
 //#endregion
-export { ApiError, AuthError, type BehaviorMapExport, ConduitError, InitializationError, InsufficientCreditsError, InternalConduit, type InternalConduitClientOptions, InvalidSourceError, JobCanceledError, JobFailedError, RateLimitError, RemoteFetchError, RemoteFetchTimeoutError, RemoteFetchTooLargeError, RequestAbortedError, SourceError, StreamError, TimeoutError, UnsupportedRuntimeError, ValidationError, WebhookVerificationError };
+export { ApiError, AuthError, type BehaviorMapDirectUploadRequest, type BehaviorMapDirectUploadResult, type BehaviorMapExport, ConduitError, InitializationError, InsufficientCreditsError, InternalConduit, type InternalConduitClientOptions, InvalidSourceError, JobCanceledError, JobFailedError, RateLimitError, RemoteFetchError, RemoteFetchTimeoutError, RemoteFetchTooLargeError, RequestAbortedError, SourceError, StreamError, TimeoutError, UnsupportedRuntimeError, ValidationError, WebhookVerificationError };
 //# sourceMappingURL=internal.d.mts.map

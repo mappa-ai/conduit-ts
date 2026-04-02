@@ -182,7 +182,7 @@ import { Conduit } from "@mappa-ai/conduit"
 
 const conduitClient = new Conduit({ apiKey: process.env.CONDUIT_API_KEY! })
 const receipt = await conduitClient.matching.create({
-  context: "hiring_team_fit",
+  context: "behavioral_compatibility",
   target: { entityId: "entity_1" },
   group: [{ entityId: "entity_2" }],
   webhook: { url: "https://your-app.com/api/webhooks/conduit" },

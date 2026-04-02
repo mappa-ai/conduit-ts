@@ -1,4 +1,4 @@
-import { A as JobCanceledError, B as UnsupportedRuntimeError, C as _coercedNumber, D as InitializationError, E as ConduitError, F as RemoteFetchTooLargeError, H as WebhookVerificationError, I as RequestAbortedError, L as SourceError, M as RateLimitError, N as RemoteFetchError, O as InsufficientCreditsError, P as RemoteFetchTimeoutError, R as StreamError, S as _coercedBoolean, T as AuthError, V as ValidationError, _ as tuple, a as parseRes, b as url, c as _enum, d as discriminatedUnion, f as literal, g as string, h as record, i as parseReq, j as JobFailedError, k as InvalidSourceError, l as array, m as object, n as randomId, o as ZodBoolean, p as number$1, r as withDeadline, s as ZodNumber, t as Transport, u as boolean$1, v as union, w as ApiError, x as datetime, y as unknown, z as TimeoutError } from "./transport-B3eMQvcw.mjs";
+import { A as InitializationError, B as SourceError, C as url, D as ApiError, E as _coercedNumber, F as RateLimitError, G as WebhookVerificationError, H as TimeoutError, I as RemoteFetchError, L as RemoteFetchTimeoutError, M as InvalidSourceError, N as JobCanceledError, O as AuthError, P as JobFailedError, R as RemoteFetchTooLargeError, S as unknown, T as _coercedBoolean, U as UnsupportedRuntimeError, V as StreamError, W as ValidationError, _ as preprocess, a as materializeSource, b as tuple, c as ZodBoolean, d as array, f as boolean$1, g as object, h as number$1, i as DEFAULT_MAX_SOURCE_BYTES, j as InsufficientCreditsError, k as ConduitError, l as ZodNumber, m as literal, n as randomId, o as parseReq, p as discriminatedUnion, r as withDeadline, s as parseRes, t as Transport, u as _enum, v as record, w as datetime, x as union, y as string, z as RequestAbortedError } from "./transport-DPEQb-cP.mjs";
 
 //#region ../../node_modules/.bun/zod@4.3.6/node_modules/zod/v4/classic/compat.js
 /** @deprecated Use the raw string literal codes instead, e.g. "invalid_type". */
@@ -29,7 +29,7 @@ function boolean(params) {
 }
 
 //#endregion
-//#region ../contracts/dist/v1/entities.mjs
+//#region ../contracts/src/v1/entities.ts
 /**
 * Entities module Zod schemas and types.
 *
@@ -135,7 +135,7 @@ var EntitiesResource = class {
 };
 
 //#endregion
-//#region ../contracts/dist/v1/reports.mjs
+//#region ../contracts/src/v1/reports.ts
 const targetSelector$1 = object({
 	entity_id: string().min(1).max(256).trim().nullish(),
 	hint: string().min(1).max(1024).trim().nullish(),
@@ -397,7 +397,7 @@ const toggleSharingBody$1 = object({
 const sharingQuery$1 = object({ workspaceId: string() });
 
 //#endregion
-//#region ../contracts/dist/v1/files.mjs
+//#region ../contracts/src/v1/files.ts
 const retentionInfo = object({
 	daysRemaining: number$1().int().nullable().describe("Days until expiry (null if locked or deleted)"),
 	expiresAt: datetime().nullable().describe("When the file will expire (null if locked)"),
@@ -421,7 +421,7 @@ const mediaProcessingStatus = _enum([
 	"COMPLETED",
 	"FAILED"
 ]);
-const manualUploadReportTemplates = array(reportTemplates).min(1).max(2).refine((value) => new Set(value).size === value.length, { message: "Report templates must be unique" });
+const manualUploadReportTemplates = preprocess((val) => typeof val === "string" ? [val] : val, array(reportTemplates).min(1).max(2).refine((value) => new Set(value).size === value.length, { message: "Report templates must be unique" }));
 const uploadResponse = object({
 	contentType: string(),
 	createdByApiKeyId: string().nullable(),
@@ -513,210 +513,6 @@ const unsupportedMediaTypeError = object({ error: object({
 }) });
 
 //#endregion
-//#region src/resources/source.ts
-const LABEL_SUFFIX_REGEX$1 = /(\.[^.]+)+$/;
-const REDIRECT_STATUSES = new Set([
-	301,
-	302,
-	303,
-	307,
-	308
-]);
-const DEFAULT_MAX_SOURCE_BYTES = 1024 * 1024 * 1024 * 5;
-async function materializeSource(source, opts) {
-	if ("file" in source) return {
-		file: await toBlob(source.file, opts.maxSourceBytes),
-		label: source.label ?? "Uploaded file"
-	};
-	if ("path" in source) {
-		const file = await readPathSource(source.path, opts.maxSourceBytes);
-		return {
-			file: new Blob([toArrayBuffer(file.bytes)]),
-			label: source.label ?? labelFromPath(source.path)
-		};
-	}
-	const remote = await downloadUrlSource(parseSourceUrl(source.url), opts);
-	return {
-		file: remote.file,
-		label: source.label ?? labelFromUrl(remote.url)
-	};
-}
-function labelFromPath(value) {
-	const raw = value.replace(/\\/g, "/").split("/").at(-1)?.trim() ?? "";
-	if (!raw) return "Uploaded file";
-	const label = raw.replace(LABEL_SUFFIX_REGEX$1, "").trim();
-	if (label) return label;
-	return "Uploaded file";
-}
-function labelFromUrl(url) {
-	const raw = url.pathname.split("/").at(-1)?.trim() ?? "";
-	if (!raw) return "Uploaded file";
-	const label = decodeURIComponent(raw).replace(LABEL_SUFFIX_REGEX$1, "").trim();
-	if (label) return label;
-	return "Uploaded file";
-}
-function parseSourceUrl(value) {
-	if (!value.trim()) throw new InvalidSourceError("source.url must be a non-empty string", { code: "invalid_source" });
-	let url;
-	try {
-		url = new URL(value);
-	} catch {
-		throw new InvalidSourceError("source.url must be a valid URL", { code: "invalid_source" });
-	}
-	if (url.protocol !== "http:" && url.protocol !== "https:") throw new InvalidSourceError("source.url must use http: or https:", { code: "invalid_source" });
-	return url;
-}
-async function readPathSource(value, maxSourceBytes) {
-	if (!value.trim()) throw new InvalidSourceError("source.path must be a non-empty string", { code: "invalid_source" });
-	let fs;
-	let p;
-	try {
-		fs = await import("node:fs/promises");
-		p = await import("node:path");
-	} catch (cause) {
-		throw new UnsupportedRuntimeError("source.path is not supported in this runtime", {
-			cause,
-			code: "unsupported_runtime"
-		});
-	}
-	const path = p.resolve(value);
-	const stat = await fs.stat(path).catch((cause) => {
-		throw new InvalidSourceError(`source.path could not be read: ${path}`, {
-			cause,
-			code: "invalid_source"
-		});
-	});
-	if (stat.isDirectory()) throw new InvalidSourceError("source.path must point to a file", { code: "invalid_source" });
-	assertWithinLimit(stat.size, maxSourceBytes, {
-		kind: "source.path",
-		url: path
-	});
-	return {
-		bytes: await fs.readFile(path),
-		path
-	};
-}
-async function downloadUrlSource(start, opts) {
-	let url = start;
-	for (let i = 0; i <= 5; i++) {
-		const response = await fetchWithTimeout(url, opts);
-		const redirected = readRedirect(response, url, i);
-		if (redirected) {
-			url = redirected;
-			continue;
-		}
-		if (!response.ok) throw new RemoteFetchError(`Failed to download source.url (status ${response.status})`, {
-			code: "remote_fetch_failed",
-			status: response.status,
-			url: url.toString()
-		});
-		const size = parseContentLength(response.headers.get("content-length"));
-		if (size !== void 0) assertWithinLimit(size, opts.maxSourceBytes, {
-			kind: "source.url",
-			status: response.status,
-			url: url.toString()
-		});
-		const body = new Uint8Array(await response.arrayBuffer());
-		assertWithinLimit(body.byteLength, opts.maxSourceBytes, {
-			kind: "source.url",
-			status: response.status,
-			url: url.toString()
-		});
-		return {
-			file: new Blob([toArrayBuffer(body)], { type: response.headers.get("content-type") ?? void 0 }),
-			url
-		};
-	}
-	throw new RemoteFetchError("Failed to download source.url", {
-		code: "remote_fetch_failed",
-		url: start.toString()
-	});
-}
-function readRedirect(response, url, hops) {
-	if (!REDIRECT_STATUSES.has(response.status)) return null;
-	if (hops === 5) throw new RemoteFetchError("source.url exceeded the redirect limit", {
-		code: "remote_fetch_redirect_limit",
-		status: response.status,
-		url: url.toString()
-	});
-	const next = response.headers.get("location");
-	if (!next) throw new RemoteFetchError("source.url returned a redirect without a location header", {
-		code: "remote_fetch_failed",
-		status: response.status,
-		url: url.toString()
-	});
-	return new URL(next, url);
-}
-async function fetchWithTimeout(url, opts) {
-	const ctrl = new AbortController();
-	const timeout = setTimeout(() => {
-		ctrl.abort(new RemoteFetchTimeoutError("source.url timed out while downloading", {
-			code: "remote_fetch_timeout",
-			url: url.toString()
-		}));
-	}, opts.timeoutMs);
-	if (opts.signal?.aborted) {
-		clearTimeout(timeout);
-		throw new RequestAbortedError("source.url download was aborted", { code: "request_aborted" });
-	}
-	opts.signal?.addEventListener("abort", () => ctrl.abort(new RequestAbortedError("source.url download was aborted", { code: "request_aborted" })), { once: true });
-	try {
-		return await opts.fetchImpl(url.toString(), {
-			method: "GET",
-			redirect: "manual",
-			signal: ctrl.signal
-		});
-	} catch (cause) {
-		if (ctrl.signal.aborted && ctrl.signal.reason instanceof Error) throw ctrl.signal.reason;
-		throw new RemoteFetchError("Failed to download source.url", {
-			cause,
-			code: "remote_fetch_failed",
-			url: url.toString()
-		});
-	} finally {
-		clearTimeout(timeout);
-	}
-}
-async function toBlob(file, maxSourceBytes) {
-	if (typeof Blob !== "undefined" && file instanceof Blob) {
-		assertWithinLimit(file.size, maxSourceBytes, { kind: "source.file" });
-		return file;
-	}
-	if (file instanceof ArrayBuffer) {
-		assertWithinLimit(file.byteLength, maxSourceBytes, { kind: "source.file" });
-		return new Blob([file]);
-	}
-	if (file instanceof Uint8Array) {
-		assertWithinLimit(file.byteLength, maxSourceBytes, { kind: "source.file" });
-		return new Blob([toArrayBuffer(file)]);
-	}
-	if (typeof ReadableStream !== "undefined" && file instanceof ReadableStream) {
-		if (typeof Response === "undefined") throw new UnsupportedRuntimeError("ReadableStream upload requires Response to convert stream to Blob", { code: "unsupported_runtime" });
-		const blob = await new Response(file).blob();
-		assertWithinLimit(blob.size, maxSourceBytes, { kind: "source.file" });
-		return blob;
-	}
-	throw new InvalidSourceError("Unsupported file type for upload()", { code: "invalid_source" });
-}
-function assertWithinLimit(size, maxSourceBytes, opts) {
-	if (size <= maxSourceBytes) return;
-	throw new RemoteFetchTooLargeError(`${opts.kind} exceeds the supported upload limit of ${maxSourceBytes} bytes`, {
-		code: "source_too_large",
-		status: opts.status,
-		url: opts.url
-	});
-}
-function parseContentLength(value) {
-	if (!value) return;
-	const size = Number(value);
-	if (!Number.isFinite(size) || size < 0) return;
-	return size;
-}
-function toArrayBuffer(bytes) {
-	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-}
-
-//#endregion
 //#region src/resources/files.ts
 const LABEL_SUFFIX_REGEX = /(\.[^.]+)+$/;
 var FilesResource = class {
@@ -728,7 +524,7 @@ var FilesResource = class {
 		this.transport = transport;
 		this.fetchImpl = opts?.fetchImpl ?? fetch;
 		this.timeoutMs = opts?.timeoutMs ?? 3e5;
-		this.maxSourceBytes = opts?.maxSourceBytes ?? DEFAULT_MAX_SOURCE_BYTES;
+		this.maxSourceBytes = opts?.maxSourceBytes ?? 5368709120;
 	}
 	async upload(req) {
 		if (typeof FormData === "undefined") throw new UnsupportedRuntimeError("FormData is not available in this runtime; cannot perform multipart upload", { code: "unsupported_runtime" });
@@ -833,7 +629,7 @@ function validateUploadSource(req) {
 }
 
 //#endregion
-//#region ../contracts/dist/v1/jobs.mjs
+//#region ../contracts/src/v1/jobs.ts
 const jobStatus = _enum([
 	"queued",
 	"running",
@@ -1122,9 +918,9 @@ function readSseError(data) {
 }
 
 //#endregion
-//#region ../contracts/dist/matching-analysis-CpgnrP6p.mjs
+//#region ../contracts/src/v1/matching-analysis.ts
 const targetSelector = targetSelector$1;
-const matchingContext = literal("hiring_team_fit");
+const matchingContext = literal("behavioral_compatibility");
 const subjectRef = discriminatedUnion("type", [object({
 	entityId: string().min(1).max(256).trim(),
 	type: literal("entity_id")
@@ -1355,7 +1151,7 @@ var MatchingAnalysisResource = class {
 	}
 };
 function validateMatchingRequest(req) {
-	if (req.context !== "hiring_team_fit") throw new ConduitError("context must be hiring_team_fit", { code: "invalid_request" });
+	if (req.context !== "behavioral_compatibility") throw new ConduitError("context must be behavioral_compatibility", { code: "invalid_request" });
 	if (req.group.length < 1) throw new ConduitError("group must include at least one subject", { code: "invalid_request" });
 	const ids = /* @__PURE__ */ new Set();
 	for (const item of [req.target, ...req.group]) {
@@ -1833,7 +1629,7 @@ var Conduit = class {
 		if (!isValidUrl(baseUrl)) throw new InitializationError("baseUrl must be a valid URL", { code: "config_error" });
 		const timeoutMs = options.timeoutMs ?? 3e5;
 		const maxRetries = options.maxRetries ?? 2;
-		const maxSourceBytes = options.maxSourceBytes ?? DEFAULT_MAX_SOURCE_BYTES;
+		const maxSourceBytes = options.maxSourceBytes ?? 5368709120;
 		const transport = new Transport({
 			apiKey: options.apiKey,
 			baseUrl,

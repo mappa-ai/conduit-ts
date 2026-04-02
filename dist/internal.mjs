@@ -1,6 +1,6 @@
-import { A as JobCanceledError, B as UnsupportedRuntimeError, D as InitializationError, E as ConduitError, F as RemoteFetchTooLargeError, H as WebhookVerificationError, I as RequestAbortedError, L as SourceError, M as RateLimitError, N as RemoteFetchError, O as InsufficientCreditsError, P as RemoteFetchTimeoutError, R as StreamError, T as AuthError, V as ValidationError, a as parseRes, c as _enum, g as string, j as JobFailedError, k as InvalidSourceError, m as object, p as number, t as Transport, w as ApiError, x as datetime, z as TimeoutError } from "./transport-B3eMQvcw.mjs";
+import { A as InitializationError, B as SourceError, D as ApiError, F as RateLimitError, G as WebhookVerificationError, H as TimeoutError, I as RemoteFetchError, L as RemoteFetchTimeoutError, M as InvalidSourceError, N as JobCanceledError, O as AuthError, P as JobFailedError, R as RemoteFetchTooLargeError, U as UnsupportedRuntimeError, V as StreamError, W as ValidationError, a as materializeSource, g as object, h as number, i as DEFAULT_MAX_SOURCE_BYTES, j as InsufficientCreditsError, k as ConduitError, s as parseRes, t as Transport, u as _enum, w as datetime, y as string, z as RequestAbortedError } from "./transport-DPEQb-cP.mjs";
 
-//#region ../contracts/dist/bin-score-Dl-oPeFK.mjs
+//#region ../contracts/src/v1/layered-lenses/edge-map.ts
 const EDGE_MAP = {
 	achievement: [
 		0,
@@ -588,6 +588,9 @@ const EDGE_MAP = {
 		.9999999999999998
 	]
 };
+
+//#endregion
+//#region ../contracts/src/v1/layered-lenses/bin-score.ts
 _enum([
 	"very_low",
 	"low",
@@ -650,7 +653,7 @@ function binScore(name, normalized) {
 }
 
 //#endregion
-//#region ../contracts/dist/v1/layered-lenses/model.mjs
+//#region ../contracts/src/v1/layered-lenses/model.ts
 const InterpretableScoreSchema = object({
 	binned: _enum([
 		"very_low",
@@ -1152,10 +1155,34 @@ const behaviorMapExportResponse = object({
 	mapId: string().min(1),
 	modelCheckpoint: string().min(1)
 });
+const behaviorMapDirectUploadResponse = object({
+	behaviorMap: LayeredLenses,
+	modelCheckpoint: string().min(1),
+	selectedSpeakerIndex: number().int().min(0)
+});
+function internalBehaviorMapsValidateSource(req) {
+	if ([
+		"file",
+		"url",
+		"path"
+	].filter((key) => key in req).length === 1) return req;
+	throw new ConduitError("directUpload() must include exactly one of file, url, or path", { code: "invalid_request" });
+}
+function internalBehaviorMapsValidateTarget(target) {
+	if (target.strategy === "dominant") return target;
+	if (!target.hint.trim()) throw new ConduitError("target.hint is required for magic_hint", { code: "invalid_request" });
+	return target;
+}
 var InternalBehaviorMapsResource = class {
 	transport;
-	constructor(transport) {
+	fetchImpl;
+	timeoutMs;
+	maxSourceBytes;
+	constructor(transport, opts) {
 		this.transport = transport;
+		this.fetchImpl = opts?.fetchImpl ?? fetch;
+		this.timeoutMs = opts?.timeoutMs ?? 3e5;
+		this.maxSourceBytes = opts?.maxSourceBytes ?? 5368709120;
 	}
 	async get(entityId, opts) {
 		if (!entityId) throw new ConduitError("entityId must be a non-empty string", { code: "invalid_request" });
@@ -1166,6 +1193,29 @@ var InternalBehaviorMapsResource = class {
 			retryable: true,
 			signal: opts?.signal
 		})).data, "internal.behaviorMaps.get");
+	}
+	async directUpload(req) {
+		if (typeof FormData === "undefined") throw new ConduitError("FormData is not available in this runtime; cannot perform multipart upload", { code: "unsupported_runtime" });
+		const source = internalBehaviorMapsValidateSource(req);
+		const target = internalBehaviorMapsValidateTarget(req.target);
+		const { file, label } = await materializeSource(source, {
+			fetchImpl: this.fetchImpl,
+			maxSourceBytes: this.maxSourceBytes,
+			signal: req.signal,
+			timeoutMs: this.timeoutMs
+		});
+		const form = new FormData();
+		form.append("file", file, label);
+		form.append("strategy", target.strategy);
+		if (target.strategy === "magic_hint") form.append("hint", target.hint);
+		return parseRes(behaviorMapDirectUploadResponse, (await this.transport.request({
+			body: form,
+			method: "POST",
+			path: "/internal/behavior-maps/direct-upload",
+			requestId: req.requestId,
+			retryable: false,
+			signal: req.signal
+		})).data, "internal.behaviorMaps.directUpload");
 	}
 };
 
@@ -1188,8 +1238,14 @@ var InternalConduit = class {
 			telemetry: options.telemetry,
 			timeoutMs: options.timeoutMs ?? 3e5,
 			userAgent: options.userAgent
-		}));
-		this.behaviorMaps = { get: behaviorMaps.get.bind(behaviorMaps) };
+		}), {
+			fetchImpl: options.fetch,
+			timeoutMs: options.timeoutMs ?? 3e5
+		});
+		this.behaviorMaps = {
+			directUpload: behaviorMaps.directUpload.bind(behaviorMaps),
+			get: behaviorMaps.get.bind(behaviorMaps)
+		};
 	}
 };
 function isBrowserRuntime() {

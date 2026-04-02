@@ -1,4 +1,4 @@
-import { _ as StreamError, a as ConduitError, b as ValidationError, c as InvalidSourceError, d as RateLimitError, f as RemoteFetchError, g as SourceError, h as RequestAbortedError, i as AuthError, l as JobCanceledError, m as RemoteFetchTooLargeError, n as Transport, o as InitializationError, p as RemoteFetchTimeoutError, r as ApiError, s as InsufficientCreditsError, t as Telemetry, u as JobFailedError, v as TimeoutError, x as WebhookVerificationError, y as UnsupportedRuntimeError } from "./transport-Bs9e6oSo.mjs";
+import { _ as StreamError, a as ConduitError, b as ValidationError, c as InvalidSourceError, d as RateLimitError, f as RemoteFetchError, g as SourceError, h as RequestAbortedError, i as AuthError, l as JobCanceledError, m as RemoteFetchTooLargeError, n as Transport, o as InitializationError, p as RemoteFetchTimeoutError, r as ApiError, s as InsufficientCreditsError, t as Telemetry, u as JobFailedError, v as TimeoutError, x as WebhookVerificationError, y as UnsupportedRuntimeError } from "./transport-ZaV_J-Ra.mjs";
 
 //#region src/types.d.ts
 type ReportTemplateId = "sales_playbook" | "general_report";
@@ -210,7 +210,7 @@ type MatchingAnalysisResolvedSubject = {
   resolvedLabel?: string | null;
 };
 type MatchingAnalysisCreateJobRequest = {
-  context: "hiring_team_fit";
+  context: "behavioral_compatibility";
   group: MatchingSubjectRef[];
   target: MatchingSubjectRef;
   label?: string;
@@ -233,7 +233,7 @@ type MatchingAnalysisResponse = {
   createdAt: string;
   jobId?: string;
   label?: string;
-  context: "hiring_team_fit";
+  context: "behavioral_compatibility";
   target?: MatchingAnalysisResolvedSubject;
   group?: MatchingAnalysisResolvedSubject[];
   output: {

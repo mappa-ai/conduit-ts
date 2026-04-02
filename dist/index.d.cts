@@ -210,7 +210,7 @@ type MatchingAnalysisResolvedSubject = {
   resolvedLabel?: string | null;
 };
 type MatchingAnalysisCreateJobRequest = {
-  context: "hiring_team_fit";
+  context: "behavioral_compatibility";
   group: MatchingSubjectRef[];
   target: MatchingSubjectRef;
   label?: string;
@@ -233,7 +233,7 @@ type MatchingAnalysisResponse = {
   createdAt: string;
   jobId?: string;
   label?: string;
-  context: "hiring_team_fit";
+  context: "behavioral_compatibility";
   target?: MatchingAnalysisResolvedSubject;
   group?: MatchingAnalysisResolvedSubject[];
   output: {

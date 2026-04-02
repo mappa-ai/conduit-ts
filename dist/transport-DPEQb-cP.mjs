@@ -1,4 +1,3 @@
-
 //#region src/errors.ts
 const customInspect = Symbol.for("nodejs.util.inspect.custom");
 function formatDetails(details, indent = "  ") {
@@ -267,10 +266,7 @@ function assignProp(target, prop, value) {
 }
 function mergeDefs(...defs) {
 	const mergedDescriptors = {};
-	for (const def of defs) {
-		const descriptors = Object.getOwnPropertyDescriptors(def);
-		Object.assign(mergedDescriptors, descriptors);
-	}
+	for (const def of defs) Object.assign(mergedDescriptors, Object.getOwnPropertyDescriptors(def));
 	return Object.defineProperties({}, mergedDescriptors);
 }
 function esc(str) {
@@ -4292,6 +4288,9 @@ function superRefine(fn) {
 }
 const describe = describe$1;
 const meta = meta$1;
+function preprocess(fn, schema) {
+	return pipe(transform(fn), schema);
+}
 
 //#endregion
 //#region src/resources/validate.ts
@@ -4318,6 +4317,210 @@ function parseRes(schema, input, name) {
 		cause: out.error,
 		code: "invalid_response"
 	});
+}
+
+//#endregion
+//#region src/resources/source.ts
+const LABEL_SUFFIX_REGEX = /(\.[^.]+)+$/;
+const REDIRECT_STATUSES = new Set([
+	301,
+	302,
+	303,
+	307,
+	308
+]);
+const DEFAULT_MAX_SOURCE_BYTES = 1024 * 1024 * 1024 * 5;
+async function materializeSource(source, opts) {
+	if ("file" in source) return {
+		file: await toBlob(source.file, opts.maxSourceBytes),
+		label: source.label ?? "Uploaded file"
+	};
+	if ("path" in source) {
+		const file = await readPathSource(source.path, opts.maxSourceBytes);
+		return {
+			file: new Blob([toArrayBuffer(file.bytes)]),
+			label: source.label ?? labelFromPath(source.path)
+		};
+	}
+	const remote = await downloadUrlSource(parseSourceUrl(source.url), opts);
+	return {
+		file: remote.file,
+		label: source.label ?? labelFromUrl(remote.url)
+	};
+}
+function labelFromPath(value) {
+	const raw = value.replace(/\\/g, "/").split("/").at(-1)?.trim() ?? "";
+	if (!raw) return "Uploaded file";
+	const label = raw.replace(LABEL_SUFFIX_REGEX, "").trim();
+	if (label) return label;
+	return "Uploaded file";
+}
+function labelFromUrl(url) {
+	const raw = url.pathname.split("/").at(-1)?.trim() ?? "";
+	if (!raw) return "Uploaded file";
+	const label = decodeURIComponent(raw).replace(LABEL_SUFFIX_REGEX, "").trim();
+	if (label) return label;
+	return "Uploaded file";
+}
+function parseSourceUrl(value) {
+	if (!value.trim()) throw new InvalidSourceError("source.url must be a non-empty string", { code: "invalid_source" });
+	let url;
+	try {
+		url = new URL(value);
+	} catch {
+		throw new InvalidSourceError("source.url must be a valid URL", { code: "invalid_source" });
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") throw new InvalidSourceError("source.url must use http: or https:", { code: "invalid_source" });
+	return url;
+}
+async function readPathSource(value, maxSourceBytes) {
+	if (!value.trim()) throw new InvalidSourceError("source.path must be a non-empty string", { code: "invalid_source" });
+	let fs;
+	let p;
+	try {
+		fs = await import("node:fs/promises");
+		p = await import("node:path");
+	} catch (cause) {
+		throw new UnsupportedRuntimeError("source.path is not supported in this runtime", {
+			cause,
+			code: "unsupported_runtime"
+		});
+	}
+	const path = p.resolve(value);
+	const stat = await fs.stat(path).catch((cause) => {
+		throw new InvalidSourceError(`source.path could not be read: ${path}`, {
+			cause,
+			code: "invalid_source"
+		});
+	});
+	if (stat.isDirectory()) throw new InvalidSourceError("source.path must point to a file", { code: "invalid_source" });
+	assertWithinLimit(stat.size, maxSourceBytes, {
+		kind: "source.path",
+		url: path
+	});
+	return {
+		bytes: await fs.readFile(path),
+		path
+	};
+}
+async function downloadUrlSource(start, opts) {
+	let url = start;
+	for (let i = 0; i <= 5; i++) {
+		const response = await fetchWithTimeout(url, opts);
+		const redirected = readRedirect(response, url, i);
+		if (redirected) {
+			url = redirected;
+			continue;
+		}
+		if (!response.ok) throw new RemoteFetchError(`Failed to download source.url (status ${response.status})`, {
+			code: "remote_fetch_failed",
+			status: response.status,
+			url: url.toString()
+		});
+		const size = parseContentLength(response.headers.get("content-length"));
+		if (size !== void 0) assertWithinLimit(size, opts.maxSourceBytes, {
+			kind: "source.url",
+			status: response.status,
+			url: url.toString()
+		});
+		const body = new Uint8Array(await response.arrayBuffer());
+		assertWithinLimit(body.byteLength, opts.maxSourceBytes, {
+			kind: "source.url",
+			status: response.status,
+			url: url.toString()
+		});
+		return {
+			file: new Blob([toArrayBuffer(body)], { type: response.headers.get("content-type") ?? void 0 }),
+			url
+		};
+	}
+	throw new RemoteFetchError("Failed to download source.url", {
+		code: "remote_fetch_failed",
+		url: start.toString()
+	});
+}
+function readRedirect(response, url, hops) {
+	if (!REDIRECT_STATUSES.has(response.status)) return null;
+	if (hops === 5) throw new RemoteFetchError("source.url exceeded the redirect limit", {
+		code: "remote_fetch_redirect_limit",
+		status: response.status,
+		url: url.toString()
+	});
+	const next = response.headers.get("location");
+	if (!next) throw new RemoteFetchError("source.url returned a redirect without a location header", {
+		code: "remote_fetch_failed",
+		status: response.status,
+		url: url.toString()
+	});
+	return new URL(next, url);
+}
+async function fetchWithTimeout(url, opts) {
+	const ctrl = new AbortController();
+	const timeout = setTimeout(() => {
+		ctrl.abort(new RemoteFetchTimeoutError("source.url timed out while downloading", {
+			code: "remote_fetch_timeout",
+			url: url.toString()
+		}));
+	}, opts.timeoutMs);
+	if (opts.signal?.aborted) {
+		clearTimeout(timeout);
+		throw new RequestAbortedError("source.url download was aborted", { code: "request_aborted" });
+	}
+	opts.signal?.addEventListener("abort", () => ctrl.abort(new RequestAbortedError("source.url download was aborted", { code: "request_aborted" })), { once: true });
+	try {
+		return await opts.fetchImpl(url.toString(), {
+			method: "GET",
+			redirect: "manual",
+			signal: ctrl.signal
+		});
+	} catch (cause) {
+		if (ctrl.signal.aborted && ctrl.signal.reason instanceof Error) throw ctrl.signal.reason;
+		throw new RemoteFetchError("Failed to download source.url", {
+			cause,
+			code: "remote_fetch_failed",
+			url: url.toString()
+		});
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+async function toBlob(file, maxSourceBytes) {
+	if (typeof Blob !== "undefined" && file instanceof Blob) {
+		assertWithinLimit(file.size, maxSourceBytes, { kind: "source.file" });
+		return file;
+	}
+	if (file instanceof ArrayBuffer) {
+		assertWithinLimit(file.byteLength, maxSourceBytes, { kind: "source.file" });
+		return new Blob([file]);
+	}
+	if (file instanceof Uint8Array) {
+		assertWithinLimit(file.byteLength, maxSourceBytes, { kind: "source.file" });
+		return new Blob([toArrayBuffer(file)]);
+	}
+	if (typeof ReadableStream !== "undefined" && file instanceof ReadableStream) {
+		if (typeof Response === "undefined") throw new UnsupportedRuntimeError("ReadableStream upload requires Response to convert stream to Blob", { code: "unsupported_runtime" });
+		const blob = await new Response(file).blob();
+		assertWithinLimit(blob.size, maxSourceBytes, { kind: "source.file" });
+		return blob;
+	}
+	throw new InvalidSourceError("Unsupported file type for upload()", { code: "invalid_source" });
+}
+function assertWithinLimit(size, maxSourceBytes, opts) {
+	if (size <= maxSourceBytes) return;
+	throw new RemoteFetchTooLargeError(`${opts.kind} exceeds the supported upload limit of ${maxSourceBytes} bytes`, {
+		code: "source_too_large",
+		status: opts.status,
+		url: opts.url
+	});
+}
+function parseContentLength(value) {
+	if (!value) return;
+	const size = Number(value);
+	if (!Number.isFinite(size) || size < 0) return;
+	return size;
+}
+function toArrayBuffer(bytes) {
+	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
 //#endregion
@@ -4774,256 +4977,5 @@ var Transport = class {
 };
 
 //#endregion
-Object.defineProperty(exports, 'ApiError', {
-  enumerable: true,
-  get: function () {
-    return ApiError;
-  }
-});
-Object.defineProperty(exports, 'AuthError', {
-  enumerable: true,
-  get: function () {
-    return AuthError;
-  }
-});
-Object.defineProperty(exports, 'ConduitError', {
-  enumerable: true,
-  get: function () {
-    return ConduitError;
-  }
-});
-Object.defineProperty(exports, 'InitializationError', {
-  enumerable: true,
-  get: function () {
-    return InitializationError;
-  }
-});
-Object.defineProperty(exports, 'InsufficientCreditsError', {
-  enumerable: true,
-  get: function () {
-    return InsufficientCreditsError;
-  }
-});
-Object.defineProperty(exports, 'InvalidSourceError', {
-  enumerable: true,
-  get: function () {
-    return InvalidSourceError;
-  }
-});
-Object.defineProperty(exports, 'JobCanceledError', {
-  enumerable: true,
-  get: function () {
-    return JobCanceledError;
-  }
-});
-Object.defineProperty(exports, 'JobFailedError', {
-  enumerable: true,
-  get: function () {
-    return JobFailedError;
-  }
-});
-Object.defineProperty(exports, 'RateLimitError', {
-  enumerable: true,
-  get: function () {
-    return RateLimitError;
-  }
-});
-Object.defineProperty(exports, 'RemoteFetchError', {
-  enumerable: true,
-  get: function () {
-    return RemoteFetchError;
-  }
-});
-Object.defineProperty(exports, 'RemoteFetchTimeoutError', {
-  enumerable: true,
-  get: function () {
-    return RemoteFetchTimeoutError;
-  }
-});
-Object.defineProperty(exports, 'RemoteFetchTooLargeError', {
-  enumerable: true,
-  get: function () {
-    return RemoteFetchTooLargeError;
-  }
-});
-Object.defineProperty(exports, 'RequestAbortedError', {
-  enumerable: true,
-  get: function () {
-    return RequestAbortedError;
-  }
-});
-Object.defineProperty(exports, 'SourceError', {
-  enumerable: true,
-  get: function () {
-    return SourceError;
-  }
-});
-Object.defineProperty(exports, 'StreamError', {
-  enumerable: true,
-  get: function () {
-    return StreamError;
-  }
-});
-Object.defineProperty(exports, 'TimeoutError', {
-  enumerable: true,
-  get: function () {
-    return TimeoutError;
-  }
-});
-Object.defineProperty(exports, 'Transport', {
-  enumerable: true,
-  get: function () {
-    return Transport;
-  }
-});
-Object.defineProperty(exports, 'UnsupportedRuntimeError', {
-  enumerable: true,
-  get: function () {
-    return UnsupportedRuntimeError;
-  }
-});
-Object.defineProperty(exports, 'ValidationError', {
-  enumerable: true,
-  get: function () {
-    return ValidationError;
-  }
-});
-Object.defineProperty(exports, 'WebhookVerificationError', {
-  enumerable: true,
-  get: function () {
-    return WebhookVerificationError;
-  }
-});
-Object.defineProperty(exports, 'ZodBoolean', {
-  enumerable: true,
-  get: function () {
-    return ZodBoolean;
-  }
-});
-Object.defineProperty(exports, 'ZodNumber', {
-  enumerable: true,
-  get: function () {
-    return ZodNumber;
-  }
-});
-Object.defineProperty(exports, '_coercedBoolean', {
-  enumerable: true,
-  get: function () {
-    return _coercedBoolean;
-  }
-});
-Object.defineProperty(exports, '_coercedNumber', {
-  enumerable: true,
-  get: function () {
-    return _coercedNumber;
-  }
-});
-Object.defineProperty(exports, '_enum', {
-  enumerable: true,
-  get: function () {
-    return _enum;
-  }
-});
-Object.defineProperty(exports, 'array', {
-  enumerable: true,
-  get: function () {
-    return array;
-  }
-});
-Object.defineProperty(exports, 'boolean', {
-  enumerable: true,
-  get: function () {
-    return boolean;
-  }
-});
-Object.defineProperty(exports, 'datetime', {
-  enumerable: true,
-  get: function () {
-    return datetime;
-  }
-});
-Object.defineProperty(exports, 'discriminatedUnion', {
-  enumerable: true,
-  get: function () {
-    return discriminatedUnion;
-  }
-});
-Object.defineProperty(exports, 'literal', {
-  enumerable: true,
-  get: function () {
-    return literal;
-  }
-});
-Object.defineProperty(exports, 'number', {
-  enumerable: true,
-  get: function () {
-    return number;
-  }
-});
-Object.defineProperty(exports, 'object', {
-  enumerable: true,
-  get: function () {
-    return object;
-  }
-});
-Object.defineProperty(exports, 'parseReq', {
-  enumerable: true,
-  get: function () {
-    return parseReq;
-  }
-});
-Object.defineProperty(exports, 'parseRes', {
-  enumerable: true,
-  get: function () {
-    return parseRes;
-  }
-});
-Object.defineProperty(exports, 'randomId', {
-  enumerable: true,
-  get: function () {
-    return randomId;
-  }
-});
-Object.defineProperty(exports, 'record', {
-  enumerable: true,
-  get: function () {
-    return record;
-  }
-});
-Object.defineProperty(exports, 'string', {
-  enumerable: true,
-  get: function () {
-    return string;
-  }
-});
-Object.defineProperty(exports, 'tuple', {
-  enumerable: true,
-  get: function () {
-    return tuple;
-  }
-});
-Object.defineProperty(exports, 'union', {
-  enumerable: true,
-  get: function () {
-    return union;
-  }
-});
-Object.defineProperty(exports, 'unknown', {
-  enumerable: true,
-  get: function () {
-    return unknown;
-  }
-});
-Object.defineProperty(exports, 'url', {
-  enumerable: true,
-  get: function () {
-    return url;
-  }
-});
-Object.defineProperty(exports, 'withDeadline', {
-  enumerable: true,
-  get: function () {
-    return withDeadline;
-  }
-});
-//# sourceMappingURL=transport-CgAHMI43.cjs.map
+export { InitializationError as A, SourceError as B, url as C, ApiError as D, _coercedNumber as E, RateLimitError as F, WebhookVerificationError as G, TimeoutError as H, RemoteFetchError as I, RemoteFetchTimeoutError as L, InvalidSourceError as M, JobCanceledError as N, AuthError as O, JobFailedError as P, RemoteFetchTooLargeError as R, unknown as S, _coercedBoolean as T, UnsupportedRuntimeError as U, StreamError as V, ValidationError as W, preprocess as _, materializeSource as a, tuple as b, ZodBoolean as c, array as d, boolean as f, object as g, number as h, DEFAULT_MAX_SOURCE_BYTES as i, InsufficientCreditsError as j, ConduitError as k, ZodNumber as l, literal as m, randomId as n, parseReq as o, discriminatedUnion as p, withDeadline as r, parseRes as s, Transport as t, _enum as u, record as v, datetime as w, union as x, string as y, RequestAbortedError as z };
+//# sourceMappingURL=transport-DPEQb-cP.mjs.map
