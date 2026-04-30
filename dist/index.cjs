@@ -1250,6 +1250,117 @@ function toJobStage$1(stage) {
 }
 
 //#endregion
+//#region ../contracts/src/v2/psychometrics.ts
+const psychometricsTargetStrategy = require_transport._enum(["dominant", "magic_hint"]);
+const psychometricsConfidence = require_transport.object({
+	overall: require_transport.number().min(0).max(1),
+	source: require_transport.literal("signal_heuristic")
+});
+const psychometricsQuality = require_transport.object({
+	segmentCount: require_transport.number().int().nonnegative(),
+	signal: require_transport._enum([
+		"low",
+		"medium",
+		"high"
+	]),
+	sourceAudioDurationSeconds: require_transport.number().nonnegative(),
+	speakerCoverageRatio: require_transport.number().min(0).max(1),
+	targetAudioDurationSeconds: require_transport.number().nonnegative(),
+	targetUtteranceCount: require_transport.number().int().nonnegative()
+});
+const psychometricsSelectedSpeaker = require_transport.object({
+	speakerIndex: require_transport.number().int().nonnegative(),
+	strategy: psychometricsTargetStrategy
+});
+const psychometricsModel = require_transport.object({
+	metadata: require_transport.record(require_transport.string(), require_transport.string()),
+	version: require_transport.string().nullable()
+});
+const psychometricsResult = require_transport.object({
+	analysisId: require_transport.string(),
+	confidence: psychometricsConfidence,
+	createdAt: require_transport.datetime(),
+	expiresAt: require_transport.datetime(),
+	model: psychometricsModel,
+	psychometrics: require_transport.record(require_transport.string(), require_transport.number()),
+	quality: psychometricsQuality,
+	selectedSpeaker: psychometricsSelectedSpeaker
+});
+const getPsychometricsParams = require_transport.object({ analysisId: require_transport.string().min(1) });
+const psychometricsExpiredError = require_transport.object({ error: require_transport.object({
+	code: require_transport.literal("gone"),
+	message: require_transport.string()
+}) });
+const psychometricsNotFoundError = require_transport.object({ error: require_transport.object({
+	code: require_transport.literal("not_found"),
+	message: require_transport.string()
+}) });
+
+//#endregion
+//#region src/resources/psychometrics.ts
+function psychometricsValidateSource(source) {
+	if ([
+		"file",
+		"url",
+		"path"
+	].filter((key) => key in source).length === 1) return source;
+	throw new require_transport.InvalidSourceError("source must include exactly one of file, url, or path", { code: "invalid_source" });
+}
+function psychometricsValidateTarget(target) {
+	if (target.strategy === "dominant") return target;
+	if (!target.hint.trim()) throw new require_transport.ConduitError("target.hint is required for magic_hint", { code: "invalid_request" });
+	return target;
+}
+var PsychometricsResource = class {
+	transport;
+	fetchImpl;
+	timeoutMs;
+	maxSourceBytes;
+	constructor(transport, opts) {
+		this.transport = transport;
+		this.fetchImpl = opts?.fetchImpl ?? fetch;
+		this.timeoutMs = opts?.timeoutMs ?? 3e5;
+		this.maxSourceBytes = opts?.maxSourceBytes ?? 5368709120;
+	}
+	async create(req) {
+		if (typeof FormData === "undefined") throw new require_transport.UnsupportedRuntimeError("FormData is not available in this runtime; cannot perform multipart upload", { code: "unsupported_runtime" });
+		const source = psychometricsValidateSource(req.source);
+		const target = psychometricsValidateTarget(req.target);
+		const materialized = await require_transport.materializeSource(source, {
+			fetchImpl: this.fetchImpl,
+			maxSourceBytes: this.maxSourceBytes,
+			signal: req.signal,
+			timeoutMs: this.timeoutMs
+		});
+		const form = new FormData();
+		form.append("file", materialized.file, materialized.label);
+		form.append("strategy", target.strategy);
+		if (target.strategy === "magic_hint") form.append("hint", target.hint);
+		const res = await this.transport.request({
+			body: form,
+			idempotencyKey: req.idempotencyKey,
+			method: "POST",
+			path: "/v2/psychometrics",
+			requestId: req.requestId,
+			retryable: false,
+			signal: req.signal
+		});
+		return require_transport.parseRes(psychometricsResult, res.data, "psychometrics.create");
+	}
+	async get(analysisId, opts) {
+		if (!analysisId.trim()) throw new require_transport.ConduitError("analysisId must be a non-empty string", { code: "invalid_request" });
+		const res = await this.transport.request({
+			method: "GET",
+			path: `/v2/psychometrics/${encodeURIComponent(analysisId)}`,
+			requestId: opts?.requestId,
+			retryable: true,
+			signal: opts?.signal
+		});
+		return require_transport.parseRes(psychometricsResult, res.data, "psychometrics.get");
+	}
+};
+
+//#endregion
 //#region src/resources/reports.ts
 var ReportsResource = class {
 	transport;
@@ -1619,6 +1730,7 @@ function timingSafeEqualHex(a, b) {
 //#region src/Conduit.ts
 var Conduit = class {
 	matching;
+	psychometrics;
 	reports;
 	primitives;
 	webhooks;
@@ -1649,9 +1761,18 @@ var Conduit = class {
 		const jobs = new JobsResource(transport);
 		const entities = new EntitiesResource(transport);
 		const matching = new MatchingAnalysisResource(transport, jobs);
+		const psychometrics = new PsychometricsResource(transport, {
+			fetchImpl: options.fetch,
+			maxSourceBytes,
+			timeoutMs
+		});
 		this.matching = {
 			create: matching.create.bind(matching),
 			get: matching.get.bind(matching)
+		};
+		this.psychometrics = {
+			create: psychometrics.create.bind(psychometrics),
+			get: psychometrics.get.bind(psychometrics)
 		};
 		this.reports = new ReportsResource(transport, jobs, files);
 		this.primitives = {

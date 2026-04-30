@@ -14,6 +14,8 @@ Stable SDK scope is intentionally small:
 
 - `reports.create(...)`
 - `reports.get(...)`
+- `psychometrics.create(...)`
+- `psychometrics.get(...)`
 - `matching.create(...)`
 - `matching.get(...)`
 - `webhooks.verifySignature(...)`
@@ -22,6 +24,8 @@ Stable SDK scope is intentionally small:
 Use webhooks as your default completion path. Report generation can take ~150s.
 
 Advanced stable primitives are available under `conduit.primitives.entities`, `conduit.primitives.media`, and `conduit.primitives.jobs`.
+
+`reports` remains the primary onboarding path. `psychometrics` is the additional stable sync workflow for direct trait-map access.
 
 Stable primitive methods:
 
@@ -83,6 +87,31 @@ type ReportSource =
 - `source.path` resolves relative to the current working directory in filesystem-capable runtimes.
 - The client timeout budget applies to remote fetch, upload, and API create unless you provide narrower controls around your own calls.
 - `source.url`, `source.path`, and `ReadableStream` uploads may buffer in memory in JavaScript runtimes before upload when streaming is not available end-to-end.
+
+## Psychometrics
+
+Use `psychometrics` when you want the direct psychometric trait payload without the async report workflow.
+
+```ts
+const result = await conduitClient.psychometrics.create({
+  source: { path: "./calls/candidate-call.wav" },
+  target: { strategy: "magic_hint", hint: "the candidate" },
+})
+
+console.log(result.analysisId)
+console.log(result.psychometrics.conscientiousness)
+```
+
+Accepted psychometrics sources:
+
+```ts
+type PsychometricsSource =
+  | { file: Blob | ArrayBuffer | Uint8Array | ReadableStream<Uint8Array>; label?: string }
+  | { url: string; label?: string }
+  | { path: string; label?: string }
+```
+
+Psychometrics stays narrow on purpose: the stable target contract only supports `{ strategy: "dominant" }` and `{ strategy: "magic_hint", hint }`.
 
 ## Stable primitives
 

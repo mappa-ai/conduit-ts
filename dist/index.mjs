@@ -1249,6 +1249,117 @@ function toJobStage$1(stage) {
 }
 
 //#endregion
+//#region ../contracts/src/v2/psychometrics.ts
+const psychometricsTargetStrategy = _enum(["dominant", "magic_hint"]);
+const psychometricsConfidence = object({
+	overall: number$1().min(0).max(1),
+	source: literal("signal_heuristic")
+});
+const psychometricsQuality = object({
+	segmentCount: number$1().int().nonnegative(),
+	signal: _enum([
+		"low",
+		"medium",
+		"high"
+	]),
+	sourceAudioDurationSeconds: number$1().nonnegative(),
+	speakerCoverageRatio: number$1().min(0).max(1),
+	targetAudioDurationSeconds: number$1().nonnegative(),
+	targetUtteranceCount: number$1().int().nonnegative()
+});
+const psychometricsSelectedSpeaker = object({
+	speakerIndex: number$1().int().nonnegative(),
+	strategy: psychometricsTargetStrategy
+});
+const psychometricsModel = object({
+	metadata: record(string(), string()),
+	version: string().nullable()
+});
+const psychometricsResult = object({
+	analysisId: string(),
+	confidence: psychometricsConfidence,
+	createdAt: datetime(),
+	expiresAt: datetime(),
+	model: psychometricsModel,
+	psychometrics: record(string(), number$1()),
+	quality: psychometricsQuality,
+	selectedSpeaker: psychometricsSelectedSpeaker
+});
+const getPsychometricsParams = object({ analysisId: string().min(1) });
+const psychometricsExpiredError = object({ error: object({
+	code: literal("gone"),
+	message: string()
+}) });
+const psychometricsNotFoundError = object({ error: object({
+	code: literal("not_found"),
+	message: string()
+}) });
+
+//#endregion
+//#region src/resources/psychometrics.ts
+function psychometricsValidateSource(source) {
+	if ([
+		"file",
+		"url",
+		"path"
+	].filter((key) => key in source).length === 1) return source;
+	throw new InvalidSourceError("source must include exactly one of file, url, or path", { code: "invalid_source" });
+}
+function psychometricsValidateTarget(target) {
+	if (target.strategy === "dominant") return target;
+	if (!target.hint.trim()) throw new ConduitError("target.hint is required for magic_hint", { code: "invalid_request" });
+	return target;
+}
+var PsychometricsResource = class {
+	transport;
+	fetchImpl;
+	timeoutMs;
+	maxSourceBytes;
+	constructor(transport, opts) {
+		this.transport = transport;
+		this.fetchImpl = opts?.fetchImpl ?? fetch;
+		this.timeoutMs = opts?.timeoutMs ?? 3e5;
+		this.maxSourceBytes = opts?.maxSourceBytes ?? 5368709120;
+	}
+	async create(req) {
+		if (typeof FormData === "undefined") throw new UnsupportedRuntimeError("FormData is not available in this runtime; cannot perform multipart upload", { code: "unsupported_runtime" });
+		const source = psychometricsValidateSource(req.source);
+		const target = psychometricsValidateTarget(req.target);
+		const materialized = await materializeSource(source, {
+			fetchImpl: this.fetchImpl,
+			maxSourceBytes: this.maxSourceBytes,
+			signal: req.signal,
+			timeoutMs: this.timeoutMs
+		});
+		const form = new FormData();
+		form.append("file", materialized.file, materialized.label);
+		form.append("strategy", target.strategy);
+		if (target.strategy === "magic_hint") form.append("hint", target.hint);
+		const res = await this.transport.request({
+			body: form,
+			idempotencyKey: req.idempotencyKey,
+			method: "POST",
+			path: "/v2/psychometrics",
+			requestId: req.requestId,
+			retryable: false,
+			signal: req.signal
+		});
+		return parseRes(psychometricsResult, res.data, "psychometrics.create");
+	}
+	async get(analysisId, opts) {
+		if (!analysisId.trim()) throw new ConduitError("analysisId must be a non-empty string", { code: "invalid_request" });
+		const res = await this.transport.request({
+			method: "GET",
+			path: `/v2/psychometrics/${encodeURIComponent(analysisId)}`,
+			requestId: opts?.requestId,
+			retryable: true,
+			signal: opts?.signal
+		});
+		return parseRes(psychometricsResult, res.data, "psychometrics.get");
+	}
+};
+
+//#endregion
 //#region src/resources/reports.ts
 var ReportsResource = class {
 	transport;
@@ -1618,6 +1729,7 @@ function timingSafeEqualHex(a, b) {
 //#region src/Conduit.ts
 var Conduit = class {
 	matching;
+	psychometrics;
 	reports;
 	primitives;
 	webhooks;
@@ -1648,9 +1760,18 @@ var Conduit = class {
 		const jobs = new JobsResource(transport);
 		const entities = new EntitiesResource(transport);
 		const matching = new MatchingAnalysisResource(transport, jobs);
+		const psychometrics = new PsychometricsResource(transport, {
+			fetchImpl: options.fetch,
+			maxSourceBytes,
+			timeoutMs
+		});
 		this.matching = {
 			create: matching.create.bind(matching),
 			get: matching.get.bind(matching)
+		};
+		this.psychometrics = {
+			create: psychometrics.create.bind(psychometrics),
+			get: psychometrics.get.bind(psychometrics)
 		};
 		this.reports = new ReportsResource(transport, jobs, files);
 		this.primitives = {

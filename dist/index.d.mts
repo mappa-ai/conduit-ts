@@ -1,5 +1,64 @@
 import { _ as StreamError, a as ConduitError, b as ValidationError, c as InvalidSourceError, d as RateLimitError, f as RemoteFetchError, g as SourceError, h as RequestAbortedError, i as AuthError, l as JobCanceledError, m as RemoteFetchTooLargeError, n as Transport, o as InitializationError, p as RemoteFetchTimeoutError, r as ApiError, s as InsufficientCreditsError, t as Telemetry, u as JobFailedError, v as TimeoutError, x as WebhookVerificationError, y as UnsupportedRuntimeError } from "./transport-ZaV_J-Ra.mjs";
 
+//#region src/resources/source.d.ts
+type UploadLike = Blob | ArrayBuffer | Uint8Array | ReadableStream<Uint8Array>;
+//#endregion
+//#region src/psychometrics-types.d.ts
+type PsychometricsTargetStrategy = "dominant" | "magic_hint";
+type PsychometricsTarget = {
+  strategy: "dominant";
+} | {
+  strategy: "magic_hint";
+  hint: string;
+};
+type PsychometricsSource = {
+  file: UploadLike;
+  label?: string;
+} | {
+  url: string;
+  label?: string;
+} | {
+  path: string;
+  label?: string;
+};
+type PsychometricsCreateRequest = {
+  source: PsychometricsSource;
+  target: PsychometricsTarget;
+  idempotencyKey?: string;
+  requestId?: string;
+  signal?: AbortSignal;
+};
+type PsychometricsConfidence = {
+  overall: number;
+  source: "signal_heuristic";
+};
+type PsychometricsQuality = {
+  segmentCount: number;
+  signal: "low" | "medium" | "high";
+  sourceAudioDurationSeconds: number;
+  speakerCoverageRatio: number;
+  targetAudioDurationSeconds: number;
+  targetUtteranceCount: number;
+};
+type PsychometricsSelectedSpeaker = {
+  speakerIndex: number;
+  strategy: PsychometricsTargetStrategy;
+};
+type PsychometricsModel = {
+  metadata: Record<string, string>;
+  version: string | null;
+};
+type PsychometricsResult = {
+  analysisId: string;
+  confidence: PsychometricsConfidence;
+  createdAt: string;
+  expiresAt: string;
+  model: PsychometricsModel;
+  psychometrics: Record<string, number>;
+  quality: PsychometricsQuality;
+  selectedSpeaker: PsychometricsSelectedSpeaker;
+};
+//#endregion
 //#region src/types.d.ts
 type ReportTemplateId = "sales_playbook" | "general_report";
 type ReportOutput = {
@@ -543,6 +602,13 @@ declare class Conduit {
       signal?: AbortSignal;
     }) => Promise<MatchingAnalysisResponse>;
   };
+  readonly psychometrics: {
+    create: (req: PsychometricsCreateRequest) => Promise<PsychometricsResult>;
+    get: (analysisId: string, opts?: {
+      requestId?: string;
+      signal?: AbortSignal;
+    }) => Promise<PsychometricsResult>;
+  };
   readonly reports: ReportsResource;
   readonly primitives: ConduitPrimitives;
   readonly webhooks: WebhooksResource;
@@ -571,5 +637,5 @@ declare function isUnsupportedRuntimeError(err: unknown): err is UnsupportedRunt
 declare function isValidationError(err: unknown): err is ValidationError;
 declare function isWebhookVerificationError(err: unknown): err is WebhookVerificationError;
 //#endregion
-export { ApiError, AuthError, Conduit, ConduitError, InitializationError, InsufficientCreditsError, InvalidSourceError, type Job, JobCanceledError, type JobEvent, JobFailedError, type JobStage, type JobStatus, type MatchingAnalysisCreateJobRequest, type MatchingAnalysisEntitySource, type MatchingAnalysisJobReceipt, type MatchingAnalysisResponse, type MatchingAnalysisRunHandle, type MatchingCompletedData, type MatchingCompletedEvent, type MatchingFailedData, type MatchingFailedEvent, type MatchingSubjectRef, type MediaUploadRequest, RateLimitError, RemoteFetchError, RemoteFetchTimeoutError, RemoteFetchTooLargeError, type Report, type ReportCompletedData, type ReportCompletedEvent, type ReportCreateRequest, type ReportFailedData, type ReportFailedEvent, type ReportJobReceipt, type ReportOutput, type ReportRunHandle, type ReportSource, RequestAbortedError, SourceError, StreamError, type TargetSelector, TimeoutError, UnsupportedRuntimeError, ValidationError, type WebhookConfig, type WebhookEvent, type WebhookEventType, WebhookVerificationError, isApiError, isAuthError, isConduitError, isInitializationError, isInsufficientCreditsError, isInvalidSourceError, isJobCanceledError, isJobFailedError, isRateLimitError, isRemoteFetchError, isRemoteFetchTimeoutError, isRemoteFetchTooLargeError, isRequestAbortedError, isSourceError, isStreamError, isTimeoutError, isUnsupportedRuntimeError, isValidationError, isWebhookVerificationError };
+export { ApiError, AuthError, Conduit, ConduitError, InitializationError, InsufficientCreditsError, InvalidSourceError, type Job, JobCanceledError, type JobEvent, JobFailedError, type JobStage, type JobStatus, type MatchingAnalysisCreateJobRequest, type MatchingAnalysisEntitySource, type MatchingAnalysisJobReceipt, type MatchingAnalysisResponse, type MatchingAnalysisRunHandle, type MatchingCompletedData, type MatchingCompletedEvent, type MatchingFailedData, type MatchingFailedEvent, type MatchingSubjectRef, type MediaUploadRequest, type PsychometricsConfidence, type PsychometricsCreateRequest, type PsychometricsModel, type PsychometricsQuality, type PsychometricsResult, type PsychometricsSelectedSpeaker, type PsychometricsSource, type PsychometricsTarget, type PsychometricsTargetStrategy, RateLimitError, RemoteFetchError, RemoteFetchTimeoutError, RemoteFetchTooLargeError, type Report, type ReportCompletedData, type ReportCompletedEvent, type ReportCreateRequest, type ReportFailedData, type ReportFailedEvent, type ReportJobReceipt, type ReportOutput, type ReportRunHandle, type ReportSource, RequestAbortedError, SourceError, StreamError, type TargetSelector, TimeoutError, UnsupportedRuntimeError, ValidationError, type WebhookConfig, type WebhookEvent, type WebhookEventType, WebhookVerificationError, isApiError, isAuthError, isConduitError, isInitializationError, isInsufficientCreditsError, isInvalidSourceError, isJobCanceledError, isJobFailedError, isRateLimitError, isRemoteFetchError, isRemoteFetchTimeoutError, isRemoteFetchTooLargeError, isRequestAbortedError, isSourceError, isStreamError, isTimeoutError, isUnsupportedRuntimeError, isValidationError, isWebhookVerificationError };
 //# sourceMappingURL=index.d.mts.map
