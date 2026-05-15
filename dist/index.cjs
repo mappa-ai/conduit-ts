@@ -1252,39 +1252,11 @@ function toJobStage$1(stage) {
 //#endregion
 //#region ../contracts/src/v2/psychometrics.ts
 const psychometricsTargetStrategy = require_transport._enum(["dominant", "magic_hint"]);
-const psychometricsConfidence = require_transport.object({
-	overall: require_transport.number().min(0).max(1),
-	source: require_transport.literal("signal_heuristic")
-});
-const psychometricsQuality = require_transport.object({
-	segmentCount: require_transport.number().int().nonnegative(),
-	signal: require_transport._enum([
-		"low",
-		"medium",
-		"high"
-	]),
-	sourceAudioDurationSeconds: require_transport.number().nonnegative(),
-	speakerCoverageRatio: require_transport.number().min(0).max(1),
-	targetAudioDurationSeconds: require_transport.number().nonnegative(),
-	targetUtteranceCount: require_transport.number().int().nonnegative()
-});
-const psychometricsSelectedSpeaker = require_transport.object({
-	speakerIndex: require_transport.number().int().nonnegative(),
-	strategy: psychometricsTargetStrategy
-});
-const psychometricsModel = require_transport.object({
-	metadata: require_transport.record(require_transport.string(), require_transport.string()),
-	version: require_transport.string().nullable()
-});
 const psychometricsResult = require_transport.object({
 	analysisId: require_transport.string(),
-	confidence: psychometricsConfidence,
 	createdAt: require_transport.datetime(),
 	expiresAt: require_transport.datetime(),
-	model: psychometricsModel,
-	psychometrics: require_transport.record(require_transport.string(), require_transport.number()),
-	quality: psychometricsQuality,
-	selectedSpeaker: psychometricsSelectedSpeaker
+	psychometrics: require_transport.record(require_transport.string(), require_transport.number())
 });
 const getPsychometricsParams = require_transport.object({ analysisId: require_transport.string().min(1) });
 const psychometricsExpiredError = require_transport.object({ error: require_transport.object({

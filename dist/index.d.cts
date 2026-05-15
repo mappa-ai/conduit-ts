@@ -28,35 +28,11 @@ type PsychometricsCreateRequest = {
   requestId?: string;
   signal?: AbortSignal;
 };
-type PsychometricsConfidence = {
-  overall: number;
-  source: "signal_heuristic";
-};
-type PsychometricsQuality = {
-  segmentCount: number;
-  signal: "low" | "medium" | "high";
-  sourceAudioDurationSeconds: number;
-  speakerCoverageRatio: number;
-  targetAudioDurationSeconds: number;
-  targetUtteranceCount: number;
-};
-type PsychometricsSelectedSpeaker = {
-  speakerIndex: number;
-  strategy: PsychometricsTargetStrategy;
-};
-type PsychometricsModel = {
-  metadata: Record<string, string>;
-  version: string | null;
-};
 type PsychometricsResult = {
   analysisId: string;
-  confidence: PsychometricsConfidence;
   createdAt: string;
   expiresAt: string;
-  model: PsychometricsModel;
   psychometrics: Record<string, number>;
-  quality: PsychometricsQuality;
-  selectedSpeaker: PsychometricsSelectedSpeaker;
 };
 //#endregion
 //#region src/types.d.ts
@@ -637,5 +613,5 @@ declare function isUnsupportedRuntimeError(err: unknown): err is UnsupportedRunt
 declare function isValidationError(err: unknown): err is ValidationError;
 declare function isWebhookVerificationError(err: unknown): err is WebhookVerificationError;
 //#endregion
-export { ApiError, AuthError, Conduit, ConduitError, InitializationError, InsufficientCreditsError, InvalidSourceError, type Job, JobCanceledError, type JobEvent, JobFailedError, type JobStage, type JobStatus, type MatchingAnalysisCreateJobRequest, type MatchingAnalysisEntitySource, type MatchingAnalysisJobReceipt, type MatchingAnalysisResponse, type MatchingAnalysisRunHandle, type MatchingCompletedData, type MatchingCompletedEvent, type MatchingFailedData, type MatchingFailedEvent, type MatchingSubjectRef, type MediaUploadRequest, type PsychometricsConfidence, type PsychometricsCreateRequest, type PsychometricsModel, type PsychometricsQuality, type PsychometricsResult, type PsychometricsSelectedSpeaker, type PsychometricsSource, type PsychometricsTarget, type PsychometricsTargetStrategy, RateLimitError, RemoteFetchError, RemoteFetchTimeoutError, RemoteFetchTooLargeError, type Report, type ReportCompletedData, type ReportCompletedEvent, type ReportCreateRequest, type ReportFailedData, type ReportFailedEvent, type ReportJobReceipt, type ReportOutput, type ReportRunHandle, type ReportSource, RequestAbortedError, SourceError, StreamError, type TargetSelector, TimeoutError, UnsupportedRuntimeError, ValidationError, type WebhookConfig, type WebhookEvent, type WebhookEventType, WebhookVerificationError, isApiError, isAuthError, isConduitError, isInitializationError, isInsufficientCreditsError, isInvalidSourceError, isJobCanceledError, isJobFailedError, isRateLimitError, isRemoteFetchError, isRemoteFetchTimeoutError, isRemoteFetchTooLargeError, isRequestAbortedError, isSourceError, isStreamError, isTimeoutError, isUnsupportedRuntimeError, isValidationError, isWebhookVerificationError };
+export { ApiError, AuthError, Conduit, ConduitError, InitializationError, InsufficientCreditsError, InvalidSourceError, type Job, JobCanceledError, type JobEvent, JobFailedError, type JobStage, type JobStatus, type MatchingAnalysisCreateJobRequest, type MatchingAnalysisEntitySource, type MatchingAnalysisJobReceipt, type MatchingAnalysisResponse, type MatchingAnalysisRunHandle, type MatchingCompletedData, type MatchingCompletedEvent, type MatchingFailedData, type MatchingFailedEvent, type MatchingSubjectRef, type MediaUploadRequest, type PsychometricsCreateRequest, type PsychometricsResult, type PsychometricsSource, type PsychometricsTarget, type PsychometricsTargetStrategy, RateLimitError, RemoteFetchError, RemoteFetchTimeoutError, RemoteFetchTooLargeError, type Report, type ReportCompletedData, type ReportCompletedEvent, type ReportCreateRequest, type ReportFailedData, type ReportFailedEvent, type ReportJobReceipt, type ReportOutput, type ReportRunHandle, type ReportSource, RequestAbortedError, SourceError, StreamError, type TargetSelector, TimeoutError, UnsupportedRuntimeError, ValidationError, type WebhookConfig, type WebhookEvent, type WebhookEventType, WebhookVerificationError, isApiError, isAuthError, isConduitError, isInitializationError, isInsufficientCreditsError, isInvalidSourceError, isJobCanceledError, isJobFailedError, isRateLimitError, isRemoteFetchError, isRemoteFetchTimeoutError, isRemoteFetchTooLargeError, isRequestAbortedError, isSourceError, isStreamError, isTimeoutError, isUnsupportedRuntimeError, isValidationError, isWebhookVerificationError };
 //# sourceMappingURL=index.d.cts.map

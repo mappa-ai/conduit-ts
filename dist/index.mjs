@@ -1251,39 +1251,11 @@ function toJobStage$1(stage) {
 //#endregion
 //#region ../contracts/src/v2/psychometrics.ts
 const psychometricsTargetStrategy = _enum(["dominant", "magic_hint"]);
-const psychometricsConfidence = object({
-	overall: number$1().min(0).max(1),
-	source: literal("signal_heuristic")
-});
-const psychometricsQuality = object({
-	segmentCount: number$1().int().nonnegative(),
-	signal: _enum([
-		"low",
-		"medium",
-		"high"
-	]),
-	sourceAudioDurationSeconds: number$1().nonnegative(),
-	speakerCoverageRatio: number$1().min(0).max(1),
-	targetAudioDurationSeconds: number$1().nonnegative(),
-	targetUtteranceCount: number$1().int().nonnegative()
-});
-const psychometricsSelectedSpeaker = object({
-	speakerIndex: number$1().int().nonnegative(),
-	strategy: psychometricsTargetStrategy
-});
-const psychometricsModel = object({
-	metadata: record(string(), string()),
-	version: string().nullable()
-});
 const psychometricsResult = object({
 	analysisId: string(),
-	confidence: psychometricsConfidence,
 	createdAt: datetime(),
 	expiresAt: datetime(),
-	model: psychometricsModel,
-	psychometrics: record(string(), number$1()),
-	quality: psychometricsQuality,
-	selectedSpeaker: psychometricsSelectedSpeaker
+	psychometrics: record(string(), number$1())
 });
 const getPsychometricsParams = object({ analysisId: string().min(1) });
 const psychometricsExpiredError = object({ error: object({
