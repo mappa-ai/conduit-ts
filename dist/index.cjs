@@ -173,9 +173,18 @@ const webhookConfig$1 = require_transport.object({
 	headers: require_transport.record(require_transport.string(), require_transport.string()).optional(),
 	url: require_transport.url()
 }).optional();
+/**
+* Report output language (ISO 639-1). Treated as English when omitted.
+*/
+const reportLanguage = require_transport._enum([
+	"en",
+	"es",
+	"pt"
+]);
 const reportCreateJobBody = require_transport.object({
 	entityLabel: require_transport.string().trim().min(1).max(64).optional(),
 	idempotencyKey: require_transport.string().optional(),
+	language: reportLanguage.optional(),
 	label: require_transport.string().trim().min(1).max(64).optional(),
 	media: require_transport.object({ mediaId: require_transport.string() }),
 	output: reportOutput,
@@ -1445,6 +1454,7 @@ var ReportsResource = class {
 		return {
 			entityLabel: req.entityLabel,
 			idempotencyKey: req.idempotencyKey,
+			language: req.language,
 			label: req.label,
 			media: { mediaId },
 			output: req.output,

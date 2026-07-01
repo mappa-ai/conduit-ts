@@ -172,9 +172,18 @@ const webhookConfig$1 = object({
 	headers: record(string(), string()).optional(),
 	url: url()
 }).optional();
+/**
+* Report output language (ISO 639-1). Treated as English when omitted.
+*/
+const reportLanguage = _enum([
+	"en",
+	"es",
+	"pt"
+]);
 const reportCreateJobBody = object({
 	entityLabel: string().trim().min(1).max(64).optional(),
 	idempotencyKey: string().optional(),
+	language: reportLanguage.optional(),
 	label: string().trim().min(1).max(64).optional(),
 	media: object({ mediaId: string() }),
 	output: reportOutput,
@@ -1444,6 +1453,7 @@ var ReportsResource = class {
 		return {
 			entityLabel: req.entityLabel,
 			idempotencyKey: req.idempotencyKey,
+			language: req.language,
 			label: req.label,
 			media: { mediaId },
 			output: req.output,
