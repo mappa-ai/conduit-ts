@@ -494,6 +494,21 @@ const fileDetailResponse = fileResponse.extend({
 		utterances: require_transport.array(transcriptUtterance)
 	})
 });
+const fileSpeaker = require_transport.object({
+	speechSeconds: require_transport.number().nonnegative(),
+	speakerIndex: require_transport.number().int().nonnegative(),
+	transcript: require_transport.string()
+});
+const fileSpeakersResponse = require_transport.object({
+	durationSeconds: require_transport.number().nonnegative().nullable(),
+	mediaId: require_transport.string().min(1),
+	speakers: require_transport.array(fileSpeaker),
+	status: require_transport._enum([
+		"processing",
+		"ready",
+		"failed"
+	])
+});
 const audioUrlResponse = require_transport.object({ url: require_transport.string().url() });
 const audioMetadataWarningBody = require_transport.object({
 	metadataDurationSeconds: require_transport.number().nonnegative(),
@@ -568,6 +583,16 @@ var FilesResource = class {
 			retryable: true,
 			signal: opts?.signal
 		})).data, "files.get");
+	}
+	async speakers(mediaId, opts) {
+		if (!mediaId) throw new require_transport.ConduitError("mediaId is required", { code: "invalid_request" });
+		return require_transport.parseRes(fileSpeakersResponse, (await this.transport.request({
+			method: "GET",
+			path: `/v1/files/${encodeURIComponent(mediaId)}/speakers`,
+			requestId: opts?.requestId,
+			retryable: true,
+			signal: opts?.signal
+		})).data, "files.speakers");
 	}
 	async list(opts) {
 		const query = require_transport.parseReq(listFilesQuery, {
@@ -1261,11 +1286,70 @@ function toJobStage$1(stage) {
 //#endregion
 //#region ../contracts/src/v2/psychometrics.ts
 const psychometricsTargetStrategy = require_transport._enum(["dominant", "magic_hint"]);
+const psychometricsIngestionState = require_transport._enum([
+	"processing",
+	"ready",
+	"rejected",
+	"failed"
+]);
+const psychometricsIngestionStarted = require_transport.object({
+	audioId: require_transport.string().min(1),
+	status: psychometricsIngestionState
+});
+const psychometricsIngestionSpeaker = require_transport.object({
+	cleanSpeechSeconds: require_transport.number().nonnegative(),
+	speakerIndex: require_transport.number().int().nonnegative(),
+	transcriptExcerpt: require_transport.string()
+});
+const psychometricsIngestion = require_transport.object({
+	audioId: require_transport.string().min(1),
+	durationSeconds: require_transport.number().nonnegative().nullable(),
+	speakers: require_transport.array(psychometricsIngestionSpeaker),
+	status: psychometricsIngestionState
+});
+const psychometricsPipelineClip = require_transport.object({
+	name: require_transport.string(),
+	url: require_transport.string()
+});
+const psychometricsPipelineSpeaker = require_transport.object({
+	analyzed: require_transport.boolean(),
+	cleanSpeechSeconds: require_transport.number().nonnegative(),
+	clips: require_transport.array(psychometricsPipelineClip),
+	speakerId: require_transport.string(),
+	transcriptExcerpt: require_transport.string()
+});
+const psychometricsPipeline = require_transport.object({
+	analysis: require_transport.object({
+		analyzedSeconds: require_transport.number().nullable(),
+		clipUri: require_transport.string().nullable(),
+		modelVersion: require_transport.string().nullable(),
+		targetSpeakerId: require_transport.string().nullable(),
+		traitCount: require_transport.number().int().nonnegative()
+	}),
+	audio: require_transport.object({
+		audioId: require_transport.string(),
+		durationSeconds: require_transport.number().nullable(),
+		fileName: require_transport.string(),
+		speakerCount: require_transport.number().int().nonnegative(),
+		speakers: require_transport.array(psychometricsPipelineSpeaker)
+	})
+});
+const psychometricsTextFeatureClip = require_transport.object({
+	clipId: require_transport.string(),
+	gte: require_transport.object({
+		dimensions: require_transport.number().int().nonnegative(),
+		model: require_transport.string()
+	}),
+	judgment: require_transport.record(require_transport.string(), require_transport.number()),
+	transcript: require_transport.string()
+});
 const psychometricsResult = require_transport.object({
 	analysisId: require_transport.string(),
 	createdAt: require_transport.datetime(),
 	expiresAt: require_transport.datetime(),
-	psychometrics: require_transport.record(require_transport.string(), require_transport.number())
+	pipeline: psychometricsPipeline.optional(),
+	psychometrics: require_transport.record(require_transport.string(), require_transport.number()),
+	textFeatures: require_transport.array(psychometricsTextFeatureClip).optional()
 });
 const getPsychometricsParams = require_transport.object({ analysisId: require_transport.string().min(1) });
 const psychometricsExpiredError = require_transport.object({ error: require_transport.object({
@@ -1772,6 +1856,7 @@ var Conduit = class {
 				get: files.get.bind(files),
 				list: files.list.bind(files),
 				setRetentionLock: files.setRetentionLock.bind(files),
+				speakers: files.speakers.bind(files),
 				upload: files.upload.bind(files)
 			}
 		};

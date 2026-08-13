@@ -493,6 +493,21 @@ const fileDetailResponse = fileResponse.extend({
 		utterances: array(transcriptUtterance)
 	})
 });
+const fileSpeaker = object({
+	speechSeconds: number$1().nonnegative(),
+	speakerIndex: number$1().int().nonnegative(),
+	transcript: string()
+});
+const fileSpeakersResponse = object({
+	durationSeconds: number$1().nonnegative().nullable(),
+	mediaId: string().min(1),
+	speakers: array(fileSpeaker),
+	status: _enum([
+		"processing",
+		"ready",
+		"failed"
+	])
+});
 const audioUrlResponse = object({ url: string().url() });
 const audioMetadataWarningBody = object({
 	metadataDurationSeconds: number$1().nonnegative(),
@@ -567,6 +582,16 @@ var FilesResource = class {
 			retryable: true,
 			signal: opts?.signal
 		})).data, "files.get");
+	}
+	async speakers(mediaId, opts) {
+		if (!mediaId) throw new ConduitError("mediaId is required", { code: "invalid_request" });
+		return parseRes(fileSpeakersResponse, (await this.transport.request({
+			method: "GET",
+			path: `/v1/files/${encodeURIComponent(mediaId)}/speakers`,
+			requestId: opts?.requestId,
+			retryable: true,
+			signal: opts?.signal
+		})).data, "files.speakers");
 	}
 	async list(opts) {
 		const query = parseReq(listFilesQuery, {
@@ -1260,11 +1285,70 @@ function toJobStage$1(stage) {
 //#endregion
 //#region ../contracts/src/v2/psychometrics.ts
 const psychometricsTargetStrategy = _enum(["dominant", "magic_hint"]);
+const psychometricsIngestionState = _enum([
+	"processing",
+	"ready",
+	"rejected",
+	"failed"
+]);
+const psychometricsIngestionStarted = object({
+	audioId: string().min(1),
+	status: psychometricsIngestionState
+});
+const psychometricsIngestionSpeaker = object({
+	cleanSpeechSeconds: number$1().nonnegative(),
+	speakerIndex: number$1().int().nonnegative(),
+	transcriptExcerpt: string()
+});
+const psychometricsIngestion = object({
+	audioId: string().min(1),
+	durationSeconds: number$1().nonnegative().nullable(),
+	speakers: array(psychometricsIngestionSpeaker),
+	status: psychometricsIngestionState
+});
+const psychometricsPipelineClip = object({
+	name: string(),
+	url: string()
+});
+const psychometricsPipelineSpeaker = object({
+	analyzed: boolean$1(),
+	cleanSpeechSeconds: number$1().nonnegative(),
+	clips: array(psychometricsPipelineClip),
+	speakerId: string(),
+	transcriptExcerpt: string()
+});
+const psychometricsPipeline = object({
+	analysis: object({
+		analyzedSeconds: number$1().nullable(),
+		clipUri: string().nullable(),
+		modelVersion: string().nullable(),
+		targetSpeakerId: string().nullable(),
+		traitCount: number$1().int().nonnegative()
+	}),
+	audio: object({
+		audioId: string(),
+		durationSeconds: number$1().nullable(),
+		fileName: string(),
+		speakerCount: number$1().int().nonnegative(),
+		speakers: array(psychometricsPipelineSpeaker)
+	})
+});
+const psychometricsTextFeatureClip = object({
+	clipId: string(),
+	gte: object({
+		dimensions: number$1().int().nonnegative(),
+		model: string()
+	}),
+	judgment: record(string(), number$1()),
+	transcript: string()
+});
 const psychometricsResult = object({
 	analysisId: string(),
 	createdAt: datetime(),
 	expiresAt: datetime(),
-	psychometrics: record(string(), number$1())
+	pipeline: psychometricsPipeline.optional(),
+	psychometrics: record(string(), number$1()),
+	textFeatures: array(psychometricsTextFeatureClip).optional()
 });
 const getPsychometricsParams = object({ analysisId: string().min(1) });
 const psychometricsExpiredError = object({ error: object({
@@ -1771,6 +1855,7 @@ var Conduit = class {
 				get: files.get.bind(files),
 				list: files.list.bind(files),
 				setRetentionLock: files.setRetentionLock.bind(files),
+				speakers: files.speakers.bind(files),
 				upload: files.upload.bind(files)
 			}
 		};
